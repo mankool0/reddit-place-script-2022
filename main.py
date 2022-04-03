@@ -322,8 +322,8 @@ class PlaceClient:
                 x = 0
 
             if y >= self.image_size[1]:
-                logging.info(
-                    f"{colorama.Fore.GREEN} All pixels correct, trying again in 10 seconds... {colorama.Style.RESET_ALL}"
+                logger.info(
+                    f"All pixels correct, trying again in 10 seconds..."
                 )
 
                 time.sleep(10)
