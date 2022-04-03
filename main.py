@@ -23,11 +23,13 @@ from mappings import color_map, name_map
 
 
 class PlaceClient:
-    def __init__(self, config_path):
+    def __init__(self, dry, config_path):
         # Data
         self.json_data = self.get_json_data(config_path)
         self.pixel_x_start: int = self.json_data["image_start_coords"][0]
         self.pixel_y_start: int = self.json_data["image_start_coords"][1]
+
+        self.dry = dry
 
         # In seconds
         self.delay_between_launches = (
@@ -140,7 +142,7 @@ class PlaceClient:
             exit()
         except UnidentifiedImageError:
             logger.fatal("File found, but couldn't identify image format")
-        self.pix = im.load()
+        self.pix = im.convert('RGBA').load()
         logger.info("Loaded image size: {}", im.size)
         self.image_size = im.size
 
@@ -261,6 +263,9 @@ class PlaceClient:
             "Authorization": "Bearer " + access_token_in,
             "Content-Type": "application/json",
         }
+
+        if self.dry:
+            return 3600
 
         response = requests.request(
             "POST", url, headers=headers, data=payload, proxies=self.GetRandomProxy()
@@ -422,7 +427,7 @@ class PlaceClient:
 
         return new_img
 
-    def get_unset_pixel(self, boardimg, x, y, index):
+    def get_unset_pixel(self, boardimg: Image.Image, x, y, index):
         pix2 = boardimg.convert("RGB").load()
         while True:
             if x >= self.image_size[0]:
@@ -438,23 +443,23 @@ class PlaceClient:
                 pix2 = boardimg.convert("RGB").load()
                 y = 0
 
-            logger.debug("{}, {}", x + self.pixel_x_start, y + self.pixel_y_start)
+            logger.debug("ABS X{} Y{}", x + self.pixel_x_start, y + self.pixel_y_start)
             logger.debug(
-                "{}, {}, boardimg, {}, {}", x, y, self.image_size[0], self.image_size[1]
+                "REL X{}/{} Y{}/{}", x, self.image_size[0], y, self.image_size[1]
             )
 
-            target_rgb = self.pix[x, y][:3]
+            target_rgb = self.pix[x, y]
 
-            new_rgb = self.closest_color(target_rgb)
-            if pix2[x + self.pixel_x_start, y + self.pixel_y_start] != new_rgb:
-                logger.debug(
-                    "{}, {}, {}, {}",
-                    pix2[x + self.pixel_x_start, y + self.pixel_y_start],
-                    new_rgb,
-                    target_rgb != (69, 42, 0),
-                    pix2[x, y] != new_rgb,
-                )
-                if target_rgb != (69, 42, 0):
+            if target_rgb[3] != 0:
+                new_rgb = self.closest_color(target_rgb[:3])
+                if pix2[x + self.pixel_x_start, y + self.pixel_y_start] != new_rgb:
+                    logger.debug(
+                        "{}, {}, {}, {}",
+                        pix2[x + self.pixel_x_start, y + self.pixel_y_start],
+                        new_rgb,
+                        target_rgb != (69, 42, 0),
+                        pix2[x, y] != new_rgb,
+                    )
                     logger.debug(
                         "Replacing {} pixel at: {},{} with {} color",
                         pix2[x + self.pixel_x_start, y + self.pixel_y_start],
@@ -463,8 +468,6 @@ class PlaceClient:
                         new_rgb,
                     )
                     break
-                else:
-                    logger.info("TransparrentPixel")
             x += 1
         return x, y, new_rgb
 
@@ -593,10 +596,16 @@ class PlaceClient:
 
 @click.command()
 @click.option(
-    "-d",
-    "--debug",
+    "-v",
+    "--verbose",
     is_flag=True,
-    help="Enable debug mode. Prints debug messages to the console.",
+    help="Enable verbose mode. Prints debug messages to the console.",
+)
+@click.option(
+    "-d",
+    "--dry",
+    is_flag=True,
+    help="Enable dry mode. Don't actually place any pixels.",
 )
 @click.option(
     "-c",
@@ -604,14 +613,14 @@ class PlaceClient:
     default="config.json",
     help="Location of config.json",
 )
-def main(debug: bool, config: str):
+def main(verbose: bool, dry: bool, config: str):
 
-    if not debug:
+    if not verbose:
         # default loguru level is DEBUG
         logger.remove()
         logger.add(sys.stderr, level="INFO")
 
-    client = PlaceClient(config_path=config)
+    client = PlaceClient(dry=dry, config_path=config)
     # Start everything
     client.start()
 
