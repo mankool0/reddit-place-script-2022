@@ -146,15 +146,105 @@ class PlaceClient:
         self.image_size = im.size
 
     """ Main """
+    # Obtain access token
+
+    def refresh_token(self, index, name, worker):
+        current_timestamp = math.floor(time.time())
+
+        if (
+            len(self.access_tokens) == 0 or
+            len(self.access_token_expires_at_timestamp) == 0 or
+            # index in self.access_tokens
+            index not in self.access_token_expires_at_timestamp or
+            (
+                self.access_token_expires_at_timestamp.get(index) and
+                current_timestamp >=
+                self.access_token_expires_at_timestamp.get(index)
+            )
+        ):
+            if not self.compactlogging:
+                logger.info("Thread #{} :: Refreshing access token", index)
+
+            # developer's reddit username and password
+            try:
+                username = name
+                password = worker["password"]
+                # note: use https://www.reddit.com/prefs/apps
+            except Exception:
+                logger.info(
+                    "You need to provide all required fields to worker '{}'",
+                    name,
+                )
+                exit(1)
+
+            client = requests.Session()
+            r = client.get("https://www.reddit.com/login")
+            login_get_soup = BeautifulSoup(r.content, "html.parser")
+            csrf_token = login_get_soup.find("input", {"name": "csrf_token"})[
+                "value"
+            ]
+            data = {
+                "username": username,
+                "password": password,
+                "dest": "https://www.reddit.com/",
+                "csrf_token": csrf_token,
+            }
+
+            r = client.post(
+                "https://www.reddit.com/login",
+                data=data,
+                proxies=self.GetRandomProxy(),
+            )
+            if r.status_code != 200:
+                print("Authorization failed!")  # password is probably invalid
+                return
+            else:
+                print("Authorization successful!")
+            print("Obtaining access token...")
+            r = client.get("https://www.reddit.com/")
+            data_str = (
+                BeautifulSoup(r.content, features="html.parser")
+                .find("script", {"id": "data"})
+                .contents[0][len("window.__r = "): -1]
+            )
+            data = json.loads(data_str)
+            response_data = data["user"]["session"]
+
+            if "error" in response_data:
+                logger.info(
+                    "An error occured. Make sure you have the correct credentials. Response data: {}",
+                    response_data,
+                )
+                exit(1)
+
+            self.access_tokens[index] = response_data["accessToken"]
+            # access_token_type = data["user"]["session"]["accessToken"]  # this is just "bearer"
+            access_token_expires_in_seconds = response_data[
+                "expiresIn"
+            ]  # this is usually "3600"
+            # access_token_scope = response_data["scope"]  # this is usually "*"
+
+            # ts stores the time in seconds
+            self.access_token_expires_at_timestamp[
+                index
+            ] = current_timestamp + int(access_token_expires_in_seconds)
+
+            if not self.compactlogging:
+                logger.info(
+                    "Received new access token: {}************",
+                    self.access_tokens.get(index)[:5],
+                )
+
+
     # Draw a pixel at an x, y coordinate in r/place with a specific color
 
     def set_pixel_and_check_ratelimit(
-        self, access_token_in, x, y, color_index_in=18, canvas_index=0
+        self, access_token_in, x, y, color_index_in=18
     ):
         logger.info(
             "Attempting to place {} pixel at {}, {}",
             self.color_id_to_name(color_index_in),
-            x + (1000 * canvas_index),
+            x,
             y,
         )
 
@@ -167,9 +257,9 @@ class PlaceClient:
                     "input": {
                         "actionName": "r/replace:set_pixel",
                         "PixelMessageData": {
-                            "coordinate": {"x": x, "y": y},
+                            "coordinate": {"x": x % 1000, "y": y},
                             "colorIndex": color_index_in,
-                            "canvasIndex": canvas_index,
+                            "canvasIndex": math.floor(x / 1000),
                         },
                     }
                 },
@@ -446,90 +536,7 @@ class PlaceClient:
                     if not self.compactlogging:
                         logger.info("Thread #{} :: {}", index, update_str)
 
-                # refresh access token if necessary
-                if (
-                    len(self.access_tokens) == 0 or
-                    len(self.access_token_expires_at_timestamp) == 0 or
-                    # index in self.access_tokens
-                    index not in self.access_token_expires_at_timestamp or
-                    (
-                        self.access_token_expires_at_timestamp.get(index) and
-                        current_timestamp >=
-                        self.access_token_expires_at_timestamp.get(index)
-                    )
-                ):
-                    if not self.compactlogging:
-                        logger.info("Thread #{} :: Refreshing access token", index)
-
-                    # developer's reddit username and password
-                    try:
-                        username = name
-                        password = worker["password"]
-                        # note: use https://www.reddit.com/prefs/apps
-                    except Exception:
-                        logger.info(
-                            "You need to provide all required fields to worker '{}'",
-                            name,
-                        )
-                        exit(1)
-
-                    client = requests.Session()
-                    r = client.get("https://www.reddit.com/login")
-                    login_get_soup = BeautifulSoup(r.content, "html.parser")
-                    csrf_token = login_get_soup.find("input", {"name": "csrf_token"})[
-                        "value"
-                    ]
-                    data = {
-                        "username": username,
-                        "password": password,
-                        "dest": "https://www.reddit.com/",
-                        "csrf_token": csrf_token,
-                    }
-
-                    r = client.post(
-                        "https://www.reddit.com/login",
-                        data=data,
-                        proxies=self.GetRandomProxy(),
-                    )
-                    if r.status_code != 200:
-                        print("Authorization failed!")  # password is probably invalid
-                        return
-                    else:
-                        print("Authorization successful!")
-                    print("Obtaining access token...")
-                    r = client.get("https://www.reddit.com/")
-                    data_str = (
-                        BeautifulSoup(r.content, features="html.parser")
-                        .find("script", {"id": "data"})
-                        .contents[0][len("window.__r = "): -1]
-                    )
-                    data = json.loads(data_str)
-                    response_data = data["user"]["session"]
-
-                    if "error" in response_data:
-                        logger.info(
-                            "An error occured. Make sure you have the correct credentials. Response data: {}",
-                            response_data,
-                        )
-                        exit(1)
-
-                    self.access_tokens[index] = response_data["accessToken"]
-                    # access_token_type = data["user"]["session"]["accessToken"]  # this is just "bearer"
-                    access_token_expires_in_seconds = response_data[
-                        "expiresIn"
-                    ]  # this is usually "3600"
-                    # access_token_scope = response_data["scope"]  # this is usually "*"
-
-                    # ts stores the time in seconds
-                    self.access_token_expires_at_timestamp[
-                        index
-                    ] = current_timestamp + int(access_token_expires_in_seconds)
-
-                    if not self.compactlogging:
-                        logger.info(
-                            "Received new access token: {}************",
-                            self.access_tokens.get(index)[:5],
-                        )
+                self.refresh_token(index, name, worker)
 
                 # draw pixel onto screen
                 if self.access_tokens.get(index) is not None and (
@@ -560,20 +567,15 @@ class PlaceClient:
 
                     # draw the pixel onto r/place
                     # There's a better way to do this
-                    canvas = 0
                     pixel_x_start = self.pixel_x_start + current_r
                     pixel_y_start = self.pixel_y_start + current_c
-                    while pixel_x_start > 999:
-                        pixel_x_start -= 1000
-                        canvas += 1
 
                     # draw the pixel onto r/place
                     next_pixel_placement_time = self.set_pixel_and_check_ratelimit(
                         self.access_tokens[index],
                         pixel_x_start,
                         pixel_y_start,
-                        pixel_color_index,
-                        canvas,
+                        pixel_color_index
                     )
 
                     current_r += 1
