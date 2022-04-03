@@ -250,7 +250,7 @@ class PlaceClient:
 
         imgs = []
         already_added = []
-        for i in range(0, image_sizex * image_sizey):
+        for i in range(1, image_sizex * (image_sizey + 1)):
             ws.send(
                 json.dumps(
                     {
@@ -281,13 +281,16 @@ class PlaceClient:
                     if msg["data"]["__typename"] == "FullFrameMessageData":
                         if not temp["id"] in already_added:
                             imgs.append(
-                                Image.open(
-                                    BytesIO(
-                                        requests.get(
-                                            msg["data"]["name"], stream=True
-                                        ).content
-                                    )
-                                )
+                                {
+                                    "id": temp["id"],
+                                    "image": Image.open(
+                                        BytesIO(
+                                            requests.get(
+                                                msg["data"]["name"], stream=True
+                                                ).content
+                                            )
+                                        )
+                                }
                             )
                             already_added.append(temp["id"])
                         break
@@ -297,10 +300,13 @@ class PlaceClient:
 
         new_img = Image.new("RGB", (1000 * 2, 1000))
 
+        imgs.sort(key=lambda x: x["id"])
         x_offset = 0
         for img in imgs:
-            new_img.paste(img, (x_offset, 0))
-            x_offset += img.size[0]
+            new_img.paste(img["image"], (x_offset, 0))
+            if x_offset > 0:
+                break # Sometimes sends more than 2 images so we don't need 3+
+            x_offset += img["image"].size[0]
 
         logger.info("Got image: {}", file)
 
@@ -332,9 +338,10 @@ class PlaceClient:
             )
 
             target_rgb = self.pix[x, y][:3]
+            full_target_rgb = self.pix[x, y][:4]
 
             new_rgb = self.closest_color(target_rgb)
-            if pix2[x + self.pixel_x_start, y + self.pixel_y_start] != new_rgb:
+            if pix2[x + self.pixel_x_start, y + self.pixel_y_start] != new_rgb and full_target_rgb[3] != 0:
                 logger.debug(
                     "{}, {}, {}, {}",
                     pix2[x + self.pixel_x_start, y + self.pixel_y_start],
@@ -517,6 +524,10 @@ class PlaceClient:
                         pixel_color_index,
                         canvas,
                     )
+                    if (next_pixel_placement_time - current_timestamp) > 1000000:
+                        logger.info("Thread #{} Account: {} :: got banned", index, name)
+                        repeat_forever = False
+                        break
 
                     current_r += 1
 
