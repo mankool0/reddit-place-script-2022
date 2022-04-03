@@ -60,7 +60,6 @@ class PlaceClient:
 
         # Auth
         self.access_tokens = {}
-        self.access_token_expires_at_timestamp = {}
 
         # Image information
         self.pix = None
@@ -153,13 +152,12 @@ class PlaceClient:
 
         if (
             len(self.access_tokens) == 0 or
-            len(self.access_token_expires_at_timestamp) == 0 or
             # index in self.access_tokens
-            index not in self.access_token_expires_at_timestamp or
+            index not in self.access_tokens or
             (
-                self.access_token_expires_at_timestamp.get(index) and
+                self.access_tokens.get(index)[1] and
                 current_timestamp >=
-                self.access_token_expires_at_timestamp.get(index)
+                self.access_tokens.get(index)[1]
             )
         ):
             if not self.compactlogging:
@@ -217,22 +215,12 @@ class PlaceClient:
                 )
                 exit(1)
 
-            self.access_tokens[index] = response_data["accessToken"]
-            # access_token_type = data["user"]["session"]["accessToken"]  # this is just "bearer"
-            access_token_expires_in_seconds = response_data[
-                "expiresIn"
-            ]  # this is usually "3600"
-            # access_token_scope = response_data["scope"]  # this is usually "*"
-
-            # ts stores the time in seconds
-            self.access_token_expires_at_timestamp[
-                index
-            ] = current_timestamp + int(access_token_expires_in_seconds)
+            self.access_tokens[index] = (response_data["accessToken"], (int(response_data["expiresIn"]) + current_timestamp))
 
             if not self.compactlogging:
                 logger.info(
                     "Received new access token: {}************",
-                    self.access_tokens.get(index)[:5],
+                    self.access_tokens.get(index)[0][:5],
                 )
 
 
@@ -446,7 +434,7 @@ class PlaceClient:
 
                 time.sleep(10)
 
-                boardimg = self.get_board(self.access_tokens[index])
+                boardimg = self.get_board(self.access_tokens[index][0])
                 pix2 = boardimg.convert("RGB").load()
                 y = 0
 
@@ -553,7 +541,7 @@ class PlaceClient:
 
                     # get current pixel position from input image and replacement color
                     current_r, current_c, new_rgb = self.get_unset_pixel(
-                        self.get_board(self.access_tokens[index]),
+                        self.get_board(self.access_tokens[index][0]),
                         current_r,
                         current_c,
                         index,
@@ -572,7 +560,7 @@ class PlaceClient:
 
                     # draw the pixel onto r/place
                     next_pixel_placement_time = self.set_pixel_and_check_ratelimit(
-                        self.access_tokens[index],
+                        self.access_tokens[index][0],
                         pixel_x_start,
                         pixel_y_start,
                         pixel_color_index
