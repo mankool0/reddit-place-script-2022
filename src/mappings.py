@@ -80,11 +80,25 @@ class ColorMapper:
         return ("#%02x%02x%02x" % rgb).upper()
 
     @staticmethod
+    def hex_to_rgb(hex: str):
+        """Convert hexadecimal string to rgb tuple."""
+        return ImageColor.getcolor(hex, "RGB")
+
+    @staticmethod
     def color_id_to_name(color_id: int):
         """More verbose color indicator from a pixel color id."""
         if color_id in ColorMapper.NAME_MAP.keys():
             return "{} ({})".format(ColorMapper.NAME_MAP[color_id], str(color_id))
         return "Invalid Color ({})".format(str(color_id))
+
+    @staticmethod
+    def color_id_to_rgb(color_id: int):
+        """Get proper color values from color id."""
+        if color_id in ColorMapper.COLOR_MAP.values():
+            for hex, dict_id in ColorMapper.COLOR_MAP.items():
+                if color_id == dict_id:
+                    return ColorMapper.hex_to_rgb(hex)
+        return (0, 0, 0)
 
     @staticmethod
     def closest_color(

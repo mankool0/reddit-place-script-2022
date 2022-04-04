@@ -1,4 +1,5 @@
 import math
+from random import random
 
 import requests
 import json
@@ -27,6 +28,7 @@ class PlaceClient:
         self.json_data = utils.get_json_data(self, config_path)
         self.pixel_x_start: int = self.json_data["image_start_coords"][0]
         self.pixel_y_start: int = self.json_data["image_start_coords"][1]
+        self.recently_placed = []
 
         self.dry = dry
 
@@ -241,6 +243,9 @@ class PlaceClient:
             logger.success(
                 "Thread #{} - {}: Succeeded placing pixel", thread_index, name
             )
+            self.recently_placed.append(((x, y), color_index_in))
+            if (len(self.recently_placed) > len(self.access_tokens)):
+                del self.recently_placed[-1]
 
         # THIS COMMENTED CODE LETS YOU DEBUG THREADS FOR TESTING
         # Works perfect with one thread.
@@ -449,6 +454,11 @@ class PlaceClient:
                 boardimg = self.get_board(self.access_tokens[index][0])
                 pix2 = boardimg.convert("RGB").load()
                 imgOutdated = False
+            else:
+                for pos, color_id in self.recently_placed:
+                    rgb = ColorMapper.color_id_to_rgb(color_id)
+                    pix2[pos[0], pos[1]] = rgb
+                    
 
             logger.debug("ABS X{} Y{}", x + self.pixel_x_start, y + self.pixel_y_start)
             logger.debug(
