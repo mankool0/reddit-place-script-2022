@@ -471,7 +471,7 @@ class PlaceClient:
 
                 # (69, 42, 0) is a special color reserved for transparency.
                 if target_rgb[3] == 0 or new_rgb == (69, 42, 0):
-                    logger.info(
+                    logger.trace(
                         "Transparent Pixel at {}, {} skipped",
                         x + self.pixel_x_start,
                         y + self.pixel_y_start,
