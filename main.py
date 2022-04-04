@@ -120,7 +120,7 @@ class PlaceClient:
             r = client.post(
                 "https://www.reddit.com/login",
                 data=data,
-                proxies=self.GetRandomProxy(),
+                proxies=proxy.get_random_proxy(self),
             )
             if r.status_code != 200:
                 print("Authorization failed!")  # password is probably invalid
